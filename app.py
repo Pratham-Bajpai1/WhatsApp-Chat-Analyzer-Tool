@@ -280,6 +280,7 @@ with tab8:
     st.header("Sentiment & Emotion Analysis")
     st.markdown("See the distribution, trends, and timeline of positive, negative, and neutral sentiments — and basic emotions — in the chat.")
     st.divider()
+
     # Optional filters
     sc1, sc2 = st.columns(2)
     filter_user = sc1.selectbox("Filter by user (optional)", ["All"] + [u for u in df['user'].unique() if u != "group_notification"], index=0, key="sentiment_user_filter")
@@ -287,7 +288,7 @@ with tab8:
     filtered_df = df.copy()
     if filter_user != "All":
         filtered_df = filtered_df[filtered_df['user'] == filter_user]
-    # Run sentiment analysis
+    # Use uncleaned/original text for sentiment/emotion
     filtered_df = sentiment_analyzer.analyze_sentiment(filtered_df, text_col="message")
     if filter_sentiment != "All":
         filtered_df = filtered_df[filtered_df["sentiment"] == filter_sentiment]
@@ -306,20 +307,26 @@ with tab8:
     st.dataframe(filtered_df[["date", "user", "message", "sentiment", "sent_compound"]], use_container_width=True, height=300)
     st.divider()
 
-    # Emotion analysis
+    # Emotion analysis (dynamic emotion filter)
     st.subheader("Emotion Trends")
-    emo_df = sentiment_analyzer.analyze_emotion(filtered_df, text_col="message")
-    fig_e_dist = visualization.plot_emotion_distribution(emo_df)
-    if fig_e_dist:
-        st.plotly_chart(fig_e_dist, use_container_width=True)
+    emo_df = sentiment_analyzer.analyze_emotion(df, text_col="message", use_api=True)
+    if emo_df.empty or emo_df["emotion"].nunique() == 1 and emo_df["emotion"].iloc[0] == "neutral":
+        st.info("No emotions detected; try reloading or check your Hugging Face API token.")
     else:
-        st.info("Not enough data to display emotion distribution.")
-    fig_e_time = visualization.plot_emotion_timeline(emo_df, freq="D")
-    if fig_e_time:
-        st.plotly_chart(fig_e_time, use_container_width=True)
-    else:
-        st.info("Not enough data to display emotion timeline.")
-    st.dataframe(emo_df[["date", "user", "message", "emotion"]], use_container_width=True, height=300)
+        available_emotions = sorted(emo_df["emotion"].unique())
+        filter_emotions = st.multiselect("Filter emotions to show", options=available_emotions, default=available_emotions)
+        emo_df_filtered = emo_df[emo_df["emotion"].isin(filter_emotions)]
+        fig_e_dist = visualization.plot_emotion_distribution(emo_df_filtered, emotions=filter_emotions)
+        if fig_e_dist:
+            st.plotly_chart(fig_e_dist, use_container_width=True)
+        else:
+            st.info("Not enough data to display emotion distribution.")
+        fig_e_time = visualization.plot_emotion_timeline(emo_df_filtered, freq="D", emotion_labels=filter_emotions)
+        if fig_e_time:
+            st.plotly_chart(fig_e_time, use_container_width=True)
+        else:
+            st.info("Not enough data to display emotion timeline.")
+        st.dataframe(emo_df_filtered[["date", "user", "message", "emotion"]], use_container_width=True, height=300)
 
 st.markdown(
     '<hr><div style="text-align:center; color: #888;">'

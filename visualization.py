@@ -292,13 +292,17 @@ def plot_sentiment_timeline(df: pd.DataFrame, freq: str = "D") -> Optional[go.Fi
     fig.update_layout(legend_title_text="Sentiment")
     return fig
 
-def plot_emotion_distribution(df: pd.DataFrame) -> Optional[go.Figure]:
+def plot_emotion_distribution(df: pd.DataFrame, emotions: Optional[List[str]] = None) -> Optional[go.Figure]:
     if df.empty or "emotion" not in df:
         return None
-    emotion_counts = df["emotion"].value_counts().reset_index()
-    emotion_counts.columns = ["emotion", "count"]
+    counts = df["emotion"].value_counts().reset_index()
+    counts.columns = ["emotion", "count"]
+    if emotions:
+        counts = counts[counts["emotion"].isin(emotions)]
+    if counts.empty:
+        return None
     fig = px.pie(
-        emotion_counts,
+        counts,
         values="count",
         names="emotion",
         title="Emotion Distribution",

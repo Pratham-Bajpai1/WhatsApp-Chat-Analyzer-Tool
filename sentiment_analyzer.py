@@ -1,96 +1,171 @@
+import os
+
 import pandas as pd
-from typing import List, Dict, Optional, Any
-from nltk.sentiment import SentimentIntensityAnalyzer
-import re
+from typing import List, Dict, Optional, Any, Union
+import requests
+import streamlit as st
 
-# ---- Sentiment Analysis ----
-try:
-    import nltk
-    nltk.data.find('sentiment/vader_lexicon.zip')
-except LookupError:
-    import nltk
-    nltk.download('vader_lexicon')
-
+# ---- Sentiment Analysis (VADER for speed, still quite robust for EN/HI) ----
 def get_sentiment_analyzer():
+    from nltk.sentiment import SentimentIntensityAnalyzer
+    import nltk
+    try:
+        nltk.data.find('sentiment/vader_lexicon.zip')
+    except LookupError:
+        nltk.download('vader_lexicon')
     return SentimentIntensityAnalyzer()
 
-def analyze_sentiment(df: pd.DataFrame, text_col: str = "message") -> pd.DataFrame:
+def analyze_sentiment(
+    df: pd.DataFrame,
+    text_col: str = "message",
+    out_col_prefix: str = "sent_"
+) -> pd.DataFrame:
     """
-    Adds sentiment scores and label (pos/neg/neu) for each message.
+    Analyze sentiment using VADER on uncleaned/original message text.
     """
     sia = get_sentiment_analyzer()
     sentiments = df[text_col].astype(str).apply(sia.polarity_scores)
     sent_df = pd.DataFrame(list(sentiments))
     df = df.copy()
-    df["sent_neg"] = sent_df["neg"]
-    df["sent_neu"] = sent_df["neu"]
-    df["sent_pos"] = sent_df["pos"]
-    df["sent_compound"] = sent_df["compound"]
-    df["sentiment"] = df["sent_compound"].apply(lambda x: "positive" if x > 0.05 else ("negative" if x < -0.05 else "neutral"))
+    df[f"{out_col_prefix}neg"] = sent_df["neg"]
+    df[f"{out_col_prefix}neu"] = sent_df["neu"]
+    df[f"{out_col_prefix}pos"] = sent_df["pos"]
+    df[f"{out_col_prefix}compound"] = sent_df["compound"]
+    df["sentiment"] = df[f"{out_col_prefix}compound"].apply(
+        lambda x: "positive" if x > 0.05 else ("negative" if x < -0.05 else "neutral")
+    )
     return df
 
-# ---- Emotion Detection with Hugging Face ----
-def get_emotion_pipeline(model_name: str = "j-hartmann/emotion-english-distilroberta-base"):
+# ---- Multilingual Emotion Detection using Hugging Face Inference API ----
+def _get_hf_token() -> Optional[str]:
+    return (
+        st.secrets.get("HF_TOKEN", None)
+        if hasattr(st, "secrets")
+        else os.environ.get("HF_TOKEN")
+    ) or os.environ.get("HF_TOKEN")
+
+@st.cache_resource(show_spinner="Loading emotion model (local if possible, else API)...")
+def load_local_emotion_pipeline() -> Optional[Any]:
     try:
+        import torch  # noqa: F401
         from transformers import pipeline
-        # Cache model on first load
-        if not hasattr(get_emotion_pipeline, "_pipe"):
-            get_emotion_pipeline._pipe = pipeline("text-classification", model=model_name, top_k=None, truncation=True)
-        return get_emotion_pipeline._pipe
+        pipe = pipeline(
+            "text-classification",
+            model="SamLowe/roberta-base-go_emotions",
+            top_k=None,
+            truncation=True,
+        )
+        return pipe
     except Exception as e:
-        print("Could not load transformers emotion model:", str(e))
+        st.warning(
+            f"Local emotion model unavailable: {e}. Will use Hugging Face Inference API fallback if possible."
+        )
         return None
+
+def detect_emotion_local(texts: List[str], pipe: Any) -> List[str]:
+    """
+    Run emotion detection locally using the Hugging Face pipeline.
+    Returns a list of dominant emotion labels (one per text).
+    Always returns a list of the same length as texts.
+    """
+    if pipe is None:
+        return []
+    try:
+        results = pipe(texts, truncation=True)
+        labels = []
+        for res in results:
+            if isinstance(res, list) and res:
+                top = max(res, key=lambda x: x['score'])
+                labels.append(top['label'].lower())
+            elif isinstance(res, dict) and 'label' in res:
+                labels.append(res['label'].lower())
+            else:
+                labels.append("neutral")
+        # Defensive: if output is wrong length, treat as failure
+        if len(labels) != len(texts):
+            st.warning("Local emotion model returned unexpected output length. Falling back to API.")
+            return []
+        return labels
+    except Exception as e:
+        st.warning(f"Error running local emotion model: {e}. Falling back to API.")
+        return []
+
+def detect_emotion_api(texts: List[str], hf_token: Optional[str] = None) -> List[str]:
+    """
+    Use Hugging Face Inference API via huggingface_hub.InferenceClient.
+    Returns a list of dominant emotion labels (one per text).
+    Always returns a list of the same length as texts.
+    """
+    labels = []
+    try:
+        from huggingface_hub import InferenceClient
+        hf_token = hf_token or _get_hf_token()
+        if not hf_token:
+            st.warning("HF_TOKEN not found for Hugging Face API. Emotion detection will default to 'neutral'.")
+            return ["neutral"] * len(texts)
+        client = InferenceClient(token=hf_token)
+        for text in texts:
+            try:
+                result = client.text_classification(
+                    text,
+                    model="SamLowe/roberta-base-go_emotions"
+                )
+                if isinstance(result, list) and result:
+                    top = max(result, key=lambda x: x['score'])
+                    labels.append(top['label'].lower())
+                else:
+                    labels.append("neutral")
+            except Exception as e:
+                st.warning(f"Error querying Hugging Face API: {e}")
+                labels.append("neutral")
+        st.info("Using Hugging Face Inference API for emotion detection.")
+        return labels
+    except ImportError:
+        st.warning("huggingface_hub not installed. Install or add to requirements.txt for remote API fallback.")
+        return ["neutral"] * len(texts)
+    except Exception as e:
+        st.warning(f"Error setting up Hugging Face Inference API: {e}")
+        return ["neutral"] * len(texts)
+
+def detect_emotion(
+    texts: Union[str, List[str]],
+    use_api: bool = True,
+    pipe: Optional[Any] = None
+) -> List[str]:
+    """
+    Detects emotion for each message in texts (original, uncleaned).
+    Tries local model first, then API fallback, then "neutral" default.
+    Always returns a list of the same length as input texts.
+    """
+    if isinstance(texts, str):
+        texts = [texts]
+    # Stage 1: Try local model
+    if pipe is None:
+        pipe = load_local_emotion_pipeline()
+    labels = detect_emotion_local(texts, pipe)
+    if labels and len(labels) == len(texts):
+        return labels
+    # Stage 2: Fallback to API
+    if use_api:
+        labels = detect_emotion_api(texts)
+        if labels and len(labels) == len(texts):
+            return labels
+    # Final fallback: all neutral
+    st.warning("Could not detect emotion (model and API unavailable). Defaulting to 'neutral'.")
+    return ["neutral"] * len(texts)
 
 def analyze_emotion(
     df: pd.DataFrame,
     text_col: str = "message",
-    model_name: str = "j-hartmann/emotion-english-distilroberta-base"
+    use_api: bool = True
 ) -> pd.DataFrame:
     """
-    Adds 'emotion' column to DataFrame using a Hugging Face emotion model.
-    Falls back to rule-based if model is not available.
+    Adds an 'emotion' column using local model or API fallback.
+    Uses original, uncleaned messages.
+    Returns a copy of the DataFrame with 'emotion' column.
     """
-    pipe = get_emotion_pipeline(model_name)
     df = df.copy()
-    if pipe:
-        # Batch processing for efficiency
-        messages = df[text_col].fillna("").astype(str).tolist()
-        # The pipeline expects a list of texts
-        try:
-            results = pipe(messages, truncation=True)
-            # Pick the highest score label for each message
-            detected = []
-            for out in results:
-                if isinstance(out, list):
-                    best = max(out, key=lambda x: x['score'])
-                    label = best['label'].lower()
-                elif isinstance(out, dict):
-                    label = out.get('label', 'other').lower()
-                else:
-                    label = "other"
-                detected.append(label)
-            df["emotion"] = detected
-        except Exception as e:
-            print("Emotion pipeline failed, falling back to rule-based:", str(e))
-            df["emotion"] = df[text_col].apply(detect_emotion)
-    else:
-        df["emotion"] = df[text_col].apply(detect_emotion)
+    messages = df[text_col].fillna("").astype(str).tolist()
+    labels = detect_emotion(messages, use_api=use_api)
+    df["emotion"] = labels
     return df
-
-# ---- Rule-based fallback ----
-EMOTION_MAP = {
-    "joy": [r"\bhappy\b", r"\bjoy\b", r"\bglad\b", r"\b😊|😁|😃|😄|🙂\b"],
-    "sadness": [r"\bsad\b", r"\bunhappy\b", r"\b😭|😢|😔|😞\b"],
-    "anger": [r"\bangry\b", r"\bmad\b", r"\b😡|😠\b"],
-    "fear": [r"\bscared\b", r"\bfear\b", r"\banxious\b", r"\b😨|😱\b"],
-    "surprise": [r"\bsurprise\b", r"\bshocked\b", r"\b😲|😮|😯\b"],
-    "love": [r"\blove\b", r"\b❤️|😍|😘|💖\b"],
-}
-def detect_emotion(text: str, emotion_map: Optional[Dict[str, List[str]]] = None) -> str:
-    emotion_map = emotion_map or EMOTION_MAP
-    text = str(text).lower()
-    for emotion, patterns in emotion_map.items():
-        for pattern in patterns:
-            if re.search(pattern, text):
-                return emotion
-    return "other"
