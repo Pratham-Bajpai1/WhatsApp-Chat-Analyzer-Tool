@@ -7,8 +7,7 @@ __pycache__/
 # Ignore data folder
 data/
 
-.streamlit
-.streamlit/secrets.toml
+.streamlit/
 
 # Ignore specific file
 .env
