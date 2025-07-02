@@ -7,5 +7,7 @@ __pycache__/
 # Ignore data folder
 data/
 
+.streamlit/
+
 # Ignore specific file
 .env
