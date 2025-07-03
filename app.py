@@ -424,9 +424,9 @@ if page == "Chat Analyzer":
                 st.info("No location links found.")
 
     with tab8:
-        st.header("Sentiment & Emotion Analysis")
+        st.header("Sentiment Analysis")
         st.markdown(
-            "See the distribution, trends, and timeline of positive, negative, and neutral sentiments — and basic emotions — in the chat.")
+            "See the distribution, trends, and timeline of positive, negative, and neutral sentiments — in the chat.")
         st.divider()
 
         # Optional filters
@@ -459,29 +459,29 @@ if page == "Chat Analyzer":
                      height=300)
         st.divider()
 
-        # Emotion analysis (dynamic emotion filter)
-        st.subheader("Emotion Trends")
-        emo_df = sentiment_analyzer.analyze_emotion(df, text_col="message", use_api=True)
-        if emo_df.empty or emo_df["emotion"].nunique() == 1 and emo_df["emotion"].iloc[0] == "neutral":
-            st.info("No emotions detected; try reloading or check your Hugging Face API token.")
-        else:
-            available_emotions = sorted(emo_df["emotion"].unique())
-            filter_emotions = st.multiselect("Filter emotions to show", options=available_emotions,
-                                             default=available_emotions)
-            emo_df_filtered = emo_df[emo_df["emotion"].isin(filter_emotions)]
-            fig_e_dist = visualization.plot_emotion_distribution(emo_df_filtered, emotions=filter_emotions)
-            if fig_e_dist:
-                st.plotly_chart(fig_e_dist, use_container_width=True)
-            else:
-                st.info("Not enough data to display emotion distribution.")
-            fig_e_time = visualization.plot_emotion_timeline(emo_df_filtered, freq="D", emotion_labels=filter_emotions)
-            if fig_e_time:
-                st.plotly_chart(fig_e_time, use_container_width=True)
-            else:
-                st.info("Not enough data to display emotion timeline.")
-            st.dataframe(emo_df_filtered[["date", "user", "message", "emotion"]], use_container_width=True, height=300)
 
-# --- Feedback Page ---
+        # Emotion analysis (dynamic emotion filter) - Optimization Needed on streamlit or any other platfrom taking too much time to display data.
+        # st.subheader("Emotion Trends")
+        # emo_df = sentiment_analyzer.analyze_emotion(df, text_col="message", use_api=True)
+        # if emo_df.empty or emo_df["emotion"].nunique() == 1 and emo_df["emotion"].iloc[0] == "neutral":
+        #     st.info("No emotions detected; try reloading or check your Hugging Face API token.")
+        # else:
+        #     available_emotions = sorted(emo_df["emotion"].unique())
+        #     filter_emotions = st.multiselect("Filter emotions to show", options=available_emotions,
+        #                                      default=available_emotions)
+        #     emo_df_filtered = emo_df[emo_df["emotion"].isin(filter_emotions)]
+        #     fig_e_dist = visualization.plot_emotion_distribution(emo_df_filtered, emotions=filter_emotions)
+        #     if fig_e_dist:
+        #         st.plotly_chart(fig_e_dist, use_container_width=True)
+        #     else:
+        #         st.info("Not enough data to display emotion distribution.")
+        #     fig_e_time = visualization.plot_emotion_timeline(emo_df_filtered, freq="D", emotion_labels=filter_emotions)
+        #     if fig_e_time:
+        #         st.plotly_chart(fig_e_time, use_container_width=True)
+        #     else:
+        #         st.info("Not enough data to display emotion timeline.")
+        #     st.dataframe(emo_df_filtered[["date", "user", "message", "emotion"]], use_container_width=True, height=300)
+
 # --- Feedback Page ---
 elif page == "Feedback":
     st.title("⭐ User Feedback")
