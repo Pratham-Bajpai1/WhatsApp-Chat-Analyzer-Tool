@@ -19,6 +19,50 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# --- ATTRACTIVE FIXED FOOTER CODE ---
+st.markdown(
+    """
+    <style>
+    .fixed-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background-color: #f0f2f6; /* Slightly off-white for a subtle lift */
+        color: #222; /* Darker grey for better readability */
+        text-align: center;
+        padding: 15px 0; /* Increased vertical padding */
+        font-size: 0.9em; /* Slightly larger font */
+        z-index: 1000; /* Ensures it stays on top */
+        box-shadow: 0 -3px 8px rgba(0,0,0,0.1); /* More pronounced shadow for depth */
+        border-top: 1px solid #ddd; /* A subtle top border */
+        font-family: 'Segoe UI', 'Roboto', sans-serif; /* A common, clean font stack */
+        font-weight: 500;
+    }
+    .fixed-footer a {
+        color: #1a73e8; /* A vibrant blue for links */
+        text-decoration: none;
+        font-weight: 500; /* Make links slightly bolder */
+        transition: color 0.2s ease-in-out; /* Smooth transition for hover effect */
+    }
+    .fixed-footer a:hover {
+        color: #145cb3; /* Darker blue on hover */
+        text-decoration: underline;
+    }
+    .footer-separator {
+        margin: 0 8px; /* Spacing around the separator pipe */
+        color: #bbb; /* Lighter color for the separator */
+    }
+    </style>
+    <div class="fixed-footer">
+        © 2025 Crafted By Pratham Bajpai <span class="footer-separator">|</span>
+        <a href="https://www.linkedin.com/in/pratham-bajpai-se/" target="_blank">🤝 Connect on LinkedIn</a>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+# --- END ATTRACTIVE FIXED FOOTER CODE ---
+
 st.sidebar.title("📊 WhatsApp Chat Analyzer")
 st.sidebar.markdown(
     """
@@ -550,12 +594,3 @@ elif page == "Feedback":
                 height=400
             )
             st.caption(f"Displaying {len(filtered_df)} out of {len(df_feedback)} total feedback entries.")
-
-st.markdown(
-    '<hr><div style="text-align:center; color: #888;">'
-    '© 2025 Pratham Bajpai & Contributors &nbsp;|&nbsp; '
-    'Powered by Streamlit &nbsp;|&nbsp; '
-    '<a href="https://github.com/Pratham-Bajpai1" target="_blank">GitHub</a>'
-    '</div>',
-    unsafe_allow_html=True
-)
